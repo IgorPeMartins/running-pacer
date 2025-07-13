@@ -1,0 +1,31 @@
+name: running_coach_app
+description: A Flutter app that provides voice coaching for running pace goals.
+
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.2
+  geolocator: ^10.1.0
+  flutter_tts: ^3.8.5
+  permission_handler: ^11.0.1
+  provider: ^6.1.1
+  audioplayers: ^5.2.1
+  wakelock_plus: ^1.1.4
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+
+flutter:
+  uses-material-design: true
+  
+  assets:
+    - assets/sounds/ 
