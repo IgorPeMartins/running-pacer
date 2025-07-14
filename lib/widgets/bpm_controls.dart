@@ -40,11 +40,11 @@ class BPMControls extends StatelessWidget {
                 
                 const SizedBox(height: 12),
                 
-                // Metronome Toggle
+                // Cadence Toggle
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Text('Metronome'),
+                    const Text('Cadence'),
                     Switch(
                       value: runningProvider.metronomeEnabled,
                       onChanged: (value) => runningProvider.toggleMetronome(),
@@ -55,10 +55,10 @@ class BPMControls extends StatelessWidget {
                 
                 const SizedBox(height: 16),
                 
-                // BPM Slider
+                // Cadence Slider
                 if (runningProvider.metronomeEnabled) ...[
                   Text(
-                    'BPM: ${runningProvider.currentBPM}',
+                    'Cadence: ${runningProvider.currentBPM}',
                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                       fontWeight: FontWeight.w500,
                     ),
@@ -69,7 +69,7 @@ class BPMControls extends StatelessWidget {
                     min: 120,
                     max: 200,
                     divisions: 80,
-                    label: '${runningProvider.currentBPM} BPM',
+                    label: '${runningProvider.currentBPM} Cadence',
                     onChanged: (value) {
                       runningProvider.setBPM(value.round());
                     },
@@ -81,13 +81,13 @@ class BPMControls extends StatelessWidget {
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Text(
-                        '120 BPM',
+                        '120 Cadence',
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
                           color: Colors.grey[600],
                         ),
                       ),
                       Text(
-                        '200 BPM',
+                        '200 Cadence',
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
                           color: Colors.grey[600],
                         ),

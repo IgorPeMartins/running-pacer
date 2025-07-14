@@ -28,4 +28,20 @@ class BackgroundService {
       return false;
     }
   }
+
+  static Future<void> pauseRunning() async {
+    try {
+      await _channel.invokeMethod('pauseRunning');
+    } catch (e) {
+      print('Failed to pause running: $e');
+    }
+  }
+
+  static Future<void> resumeRunning() async {
+    try {
+      await _channel.invokeMethod('resumeRunning');
+    } catch (e) {
+      print('Failed to resume running: $e');
+    }
+  }
 } 

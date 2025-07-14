@@ -31,6 +31,9 @@ class RunningService : Service() {
         when (intent?.action) {
             "START_FOREGROUND" -> startForeground()
             "STOP_FOREGROUND" -> stopForeground()
+            "PAUSE_RUNNING" -> pauseRunning()
+            "RESUME_RUNNING" -> resumeRunning()
+            "STOP_RUNNING" -> stopRunning()
         }
         return START_STICKY
     }
@@ -39,12 +42,13 @@ class RunningService : Service() {
         val channel = NotificationChannel(
             channelId,
             "Running Coach",
-            NotificationManager.IMPORTANCE_DEFAULT
+            NotificationManager.IMPORTANCE_HIGH
         ).apply {
             description = "Running Coach Background Service"
             setSound(null, null)
             enableLights(true)
             enableVibration(true)
+            setShowBadge(true)
         }
 
         val notificationManager = getSystemService(NotificationManager::class.java)
@@ -60,14 +64,43 @@ class RunningService : Service() {
             PendingIntent.FLAG_IMMUTABLE
         )
 
+        // Create pause/resume action
+        val pauseResumeIntent = Intent(this, RunningService::class.java).apply {
+            action = if (isRunning) "PAUSE_RUNNING" else "RESUME_RUNNING"
+        }
+        val pauseResumePendingIntent = PendingIntent.getService(
+            this, 1, pauseResumeIntent,
+            PendingIntent.FLAG_IMMUTABLE
+        )
+
+        // Create stop action
+        val stopIntent = Intent(this, RunningService::class.java).apply {
+            action = "STOP_RUNNING"
+        }
+        val stopPendingIntent = PendingIntent.getService(
+            this, 2, stopIntent,
+            PendingIntent.FLAG_IMMUTABLE
+        )
+
         val notification = NotificationCompat.Builder(this, channelId)
             .setContentTitle("Running Coach Active")
-            .setContentText("Voice coaching and metronome running")
+            .setContentText("Voice coaching and cadence running")
             .setSmallIcon(android.R.drawable.ic_dialog_info)
             .setContentIntent(pendingIntent)
+            .addAction(
+                android.R.drawable.ic_media_pause,
+                if (isRunning) "Pause" else "Resume",
+                pauseResumePendingIntent
+            )
+            .addAction(
+                android.R.drawable.ic_menu_close_clear_cancel,
+                "Stop",
+                stopPendingIntent
+            )
             .setOngoing(true)
             .setSilent(true)
-            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .build()
 
         startForeground(notificationId, notification)
@@ -79,6 +112,81 @@ class RunningService : Service() {
         stopForeground(true)
         stopSelf()
         Log.d("RunningService", "Foreground service stopped")
+    }
+
+    private fun pauseRunning() {
+        isRunning = false
+        updateNotification()
+        // Send message to Flutter to pause
+        sendBroadcast(Intent("RUNNING_PAUSED"))
+        Log.d("RunningService", "Running paused")
+    }
+
+    private fun resumeRunning() {
+        isRunning = true
+        updateNotification()
+        // Send message to Flutter to resume
+        sendBroadcast(Intent("RUNNING_RESUMED"))
+        Log.d("RunningService", "Running resumed")
+    }
+
+    private fun stopRunning() {
+        isRunning = false
+        updateNotification()
+        // Send message to Flutter to stop
+        sendBroadcast(Intent("RUNNING_STOPPED"))
+        stopForeground()
+        Log.d("RunningService", "Running stopped")
+    }
+
+    private fun updateNotification() {
+        val notificationIntent = Intent(this, MainActivity::class.java)
+        val pendingIntent = PendingIntent.getActivity(
+            this, 0, notificationIntent,
+            PendingIntent.FLAG_IMMUTABLE
+        )
+
+        // Create pause/resume action
+        val pauseResumeIntent = Intent(this, RunningService::class.java).apply {
+            action = if (isRunning) "PAUSE_RUNNING" else "RESUME_RUNNING"
+        }
+        val pauseResumePendingIntent = PendingIntent.getService(
+            this, 1, pauseResumeIntent,
+            PendingIntent.FLAG_IMMUTABLE
+        )
+
+        // Create stop action
+        val stopIntent = Intent(this, RunningService::class.java).apply {
+            action = "STOP_RUNNING"
+        }
+        val stopPendingIntent = PendingIntent.getService(
+            this, 2, stopIntent,
+            PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val notification = NotificationCompat.Builder(this, channelId)
+            .setContentTitle("Running Coach Active")
+            .setContentText(if (isRunning) "Voice coaching and cadence running" else "Paused")
+            .setSmallIcon(android.R.drawable.ic_dialog_info)
+            .setContentIntent(pendingIntent)
+            .addAction(
+                android.R.drawable.ic_media_pause,
+                if (isRunning) "Pause" else "Resume",
+                pauseResumePendingIntent
+            )
+            .addAction(
+                android.R.drawable.ic_menu_close_clear_cancel,
+                "Stop",
+                stopPendingIntent
+            )
+            .setOngoing(true)
+            .setSilent(true)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .build()
+
+        val notificationManager = getSystemService(NotificationManager::class.java)
+        notificationManager.notify(notificationId, notification)
     }
 
     fun isServiceRunning(): Boolean = isRunning

@@ -23,6 +23,7 @@ class RunningProvider extends ChangeNotifier {
   Timer? _metronomeTimer;
   final FlutterTts _flutterTts = FlutterTts();
   final AudioPlayer _metronomePlayer = AudioPlayer();
+  final AudioPlayer _voicePlayer = AudioPlayer();
   DateTime? _startTime;
   Position? _lastPosition;
   
@@ -30,7 +31,7 @@ class RunningProvider extends ChangeNotifier {
   DateTime? _lastVoiceFeedback;
   bool _voiceFeedbackEnabled = true;
   bool _metronomeEnabled = true;
-  int _currentBPM = 160; // Default BPM
+  int _currentBPM = 160; // Default Cadence
   
   // Audio session management
   bool _audioSessionActive = false;
@@ -45,7 +46,7 @@ class RunningProvider extends ChangeNotifier {
   Duration get elapsedTime => _elapsedTime;
   bool get voiceFeedbackEnabled => _voiceFeedbackEnabled;
   bool get metronomeEnabled => _metronomeEnabled;
-  int get currentBPM => _currentBPM;
+  int get currentBPM => _currentBPM; // Returns cadence value
 
   RunningProvider() {
     _initializeTts();
@@ -67,7 +68,11 @@ class RunningProvider extends ChangeNotifier {
   Future<void> _initializeAudioSession() async {
     // Configure audio session for background operation
     await _metronomePlayer.setReleaseMode(ReleaseMode.stop);
-    await _metronomePlayer.setVolume(0.5);
+    await _metronomePlayer.setVolume(0.7); // Same volume as voice
+    
+    // Configure separate voice player
+    await _voicePlayer.setReleaseMode(ReleaseMode.stop);
+    await _voicePlayer.setVolume(1.0);
   }
 
   Future<void> requestPermissions() async {
@@ -116,14 +121,14 @@ class RunningProvider extends ChangeNotifier {
   }
 
   void _updateBPMFromPace() {
-    // Convert pace (min/km) to BPM
-    // A 5:00 min/km pace roughly corresponds to 160 BPM
+    // Convert pace (min/km) to Cadence
+    // A 5:00 min/km pace roughly corresponds to 160 Cadence
     // This is a simplified conversion - you might want to adjust based on your running style
     double basePace = 5.0; // 5:00 min/km
     double baseBPM = 160.0;
     double paceRatio = basePace / _targetPace;
     _currentBPM = (baseBPM * paceRatio).round();
-    _currentBPM = _currentBPM.clamp(120, 200); // Keep BPM in reasonable range
+    _currentBPM = _currentBPM.clamp(120, 200); // Keep Cadence in reasonable range
   }
 
   Future<void> startRunning() async {
@@ -181,9 +186,39 @@ class RunningProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  void pauseRunning() {
+    _isRunning = false;
+    _timer?.cancel();
+    _voiceFeedbackTimer?.cancel();
+    _stopMetronome();
+    WakelockPlus.disable();
+    notifyListeners();
+  }
+
+  void resumeRunning() {
+    _isRunning = true;
+    WakelockPlus.enable();
+    
+    // Restart main timer
+    _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      _updateElapsedTime();
+      _checkPaceAndProvideFeedback();
+    });
+
+    // Restart voice feedback timer
+    _startVoiceFeedbackTimer();
+
+    // Restart metronome if enabled
+    if (_metronomeEnabled) {
+      _startMetronome();
+    }
+
+    notifyListeners();
+  }
+
   void _startVoiceFeedbackTimer() {
     _voiceFeedbackTimer?.cancel();
-    _voiceFeedbackTimer = Timer.periodic(const Duration(seconds: 10), (timer) {
+    _voiceFeedbackTimer = Timer.periodic(const Duration(seconds: 10), (timer) { // Every 10 seconds
       if (_isRunning && _voiceFeedbackEnabled && _currentPace > 0) {
         _providePeriodicFeedback();
       }
@@ -191,7 +226,7 @@ class RunningProvider extends ChangeNotifier {
   }
 
   void _providePeriodicFeedback() {
-    if (_currentPace <= 0 || _distance < 0.1) return;
+    if (_currentPace <= 0 || _distance < 0.05) return; // Reduced to 50m
 
     double paceDifference = _currentPace - _targetPace;
     String feedback;
@@ -199,10 +234,10 @@ class RunningProvider extends ChangeNotifier {
     if (paceDifference.abs() < 0.1) {
       // On target pace
       feedback = "Good pace";
-    } else if (paceDifference > 0.2) {
+    } else if (paceDifference > 0.15) {
       // Too slow
       feedback = "Speed up";
-    } else if (paceDifference < -0.2) {
+    } else if (paceDifference < -0.15) {
       // Too fast
       feedback = "Slow down";
     } else {
@@ -217,10 +252,17 @@ class RunningProvider extends ChangeNotifier {
     _metronomeTimer?.cancel();
     if (_currentBPM <= 0) return;
 
-    int intervalMs = (60000 / _currentBPM).round(); // Convert BPM to milliseconds
-    _metronomeTimer = Timer.periodic(Duration(milliseconds: intervalMs), (timer) {
+    int intervalMs = (60000 / _currentBPM).round(); // Convert Cadence to milliseconds
+    
+    // Use a more precise timing mechanism
+    DateTime nextTick = DateTime.now();
+    _metronomeTimer = Timer.periodic(Duration(milliseconds: 50), (timer) {
       if (_isRunning && _metronomeEnabled) {
-        _playMetronomeTick();
+        DateTime now = DateTime.now();
+        if (now.isAfter(nextTick)) {
+          _playMetronomeTick();
+          nextTick = now.add(Duration(milliseconds: intervalMs));
+        }
       }
     });
   }
@@ -232,15 +274,13 @@ class RunningProvider extends ChangeNotifier {
 
   Future<void> _playMetronomeTick() async {
     try {
-      // Use vibration for metronome to avoid conflicts with voice feedback
-      HapticFeedback.lightImpact();
-      if (kDebugMode) {
-        print('Metronome tick at BPM: $_currentBPM');
-      }
+      // Use custom cadence sound file with better error handling
+      await _metronomePlayer.play(AssetSource('sounds/metronome_tick.wav'));
     } catch (e) {
       if (kDebugMode) {
-        print('Metronome error: $e');
+        print('Cadence error: $e');
       }
+      // Don't let errors break the rhythm
     }
   }
 
@@ -254,7 +294,7 @@ class RunningProvider extends ChangeNotifier {
   Future<void> _startLocationTracking() async {
     const LocationSettings locationSettings = LocationSettings(
       accuracy: LocationAccuracy.high,
-      distanceFilter: 5, // Update every 5 meters for more frequent updates
+      distanceFilter: 1, // Update every 1 meter for real-time updates
     );
 
     Geolocator.getPositionStream(locationSettings: locationSettings)
@@ -275,6 +315,11 @@ class RunningProvider extends ChangeNotifier {
     if (_positions.length >= 2) {
       _calculateDistance();
       _calculateCurrentPace();
+      
+      // Keep only recent positions to avoid memory issues and improve responsiveness
+      if (_positions.length > 20) {
+        _positions.removeAt(0);
+      }
     }
     
     _lastPosition = position;
@@ -297,24 +342,15 @@ class RunningProvider extends ChangeNotifier {
   void _calculateCurrentPace() {
     if (_elapsedTime.inSeconds > 0 && _distance > 0) {
       double timeInMinutes = _elapsedTime.inSeconds / 60.0;
-      _currentPace = timeInMinutes / _distance; // minutes per kilometer
+      _currentPace = timeInMinutes / _distance; // minutes per kilometer - real-time calculation
     }
   }
 
   void _checkPaceAndProvideFeedback() {
-    // This method now only handles immediate feedback for significant pace changes
-    // Periodic feedback is handled by the dedicated timer
-    if (_currentPace > 0 && _distance > 0.1) {
-      double paceDifference = _currentPace - _targetPace;
-      
-      // Only provide immediate feedback for significant deviations
-      if (paceDifference.abs() > 0.5) { // 30 seconds difference
-        if (paceDifference > 0) {
-          _speakFeedback("Speed up");
-        } else {
-          _speakFeedback("Slow down");
-        }
-      }
+    // This method only updates pace calculations, no voice feedback
+    // Voice feedback is handled only by the dedicated timer every 10 seconds
+    if (_currentPace > 0 && _distance > 0.05) {
+      // Just update the pace calculation, no voice feedback here
     }
   }
 

@@ -27,6 +27,20 @@ class MainActivity: FlutterActivity() {
                     startService(intent)
                     result.success(null)
                 }
+                "pauseRunning" -> {
+                    val intent = Intent(this, RunningService::class.java).apply {
+                        action = "PAUSE_RUNNING"
+                    }
+                    startService(intent)
+                    result.success(null)
+                }
+                "resumeRunning" -> {
+                    val intent = Intent(this, RunningService::class.java).apply {
+                        action = "RESUME_RUNNING"
+                    }
+                    startService(intent)
+                    result.success(null)
+                }
                 "isServiceRunning" -> {
                     // For simplicity, we'll return true if the service was started
                     // In a real app, you'd want to track the service state more carefully
